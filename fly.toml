@@ -1,6 +1,28 @@
 app = "webgame-app"
+primary_region = "nrt"
 kill_signal = "SIGINT"
 kill_timeout = 5
 
 [build]
-  image = "node:18-alpine"
+  # Build from the local Dockerfile. Do not specify a prebuilt image here,
+  # otherwise Fly will pull that image and run it (which ignores your CMD).
+
+[[services]]
+  internal_port = 3000
+  protocol = "tcp"
+
+  [services.concurrency]
+    type = "connections"
+    soft_limit = 20
+    hard_limit = 25
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+[env]
+  # Add environment variables here if needed

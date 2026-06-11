@@ -4,3 +4,5 @@ body { font-family: Arial, sans-serif; display:flex; flex-direction:column; alig
 .cell { width:60px; height:60px; background:#eee; border:1px solid #ccc; position:relative; display:flex; align-items:center; justify-content:center; }
 .player { width:26px; height:26px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 2px rgba(0,0,0,0.08) inset; }
 .claimed { width:100%; height:100%; position:absolute; top:0; left:0; opacity:0.35; }
+
+.claimed.pending { opacity:0.6; box-shadow: inset 0 0 0 3px rgba(0,0,0,0.08); border:2px dashed rgba(0,0,0,0.12); }
