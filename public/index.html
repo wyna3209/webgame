@@ -9,10 +9,13 @@
 <body>
   <div id="ui">
     <label>색상: <input id="color" type="color" value="#ff0000"></label>
-    <button id="join">참가</button>
+    <button id="join">참가~</button>
     <span id="status">미연결</span>
+    <span id="rtt" style="margin-left:12px">RTT: -- ms</span>
+    <button id="report" style="margin-left:8px">리포트 RTT</button>
   </div>
   <div id="grid"></div>
+  <pre id="wslog" style="height:120px;overflow:auto;border:1px solid #eee;padding:6px;margin-top:8px;font-size:12px;background:#fafafa"></pre>
   <script src="/client.js"></script>
 </body>
 </html>

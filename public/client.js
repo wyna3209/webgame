@@ -6,6 +6,9 @@ let players = [];
 let myPos = null; // local predicted position {x,y}
 let seq = 0; // input sequence for debugging
 const pendingClaims = new Set(); // store 'x,y' strings for optimistic claims
+let pingSeq = 0;
+let pendingPings = new Map(); // pingId -> sentTimestamp
+let lastRtt = null;
 
 const GRID_SIZE = 5;
 
@@ -15,6 +18,23 @@ for (let y=0;y<GRID_SIZE;y++) for (let x=0;x<GRID_SIZE;x++) {
   cell.className = 'cell';
   cell.dataset.x = x; cell.dataset.y = y;
   gridEl.appendChild(cell);
+}
+
+function logFrame(dir, obj) {
+  try {
+    const el = document.getElementById('wslog');
+    const now = new Date().toISOString().substr(11,12);
+    el.textContent = `${now} ${dir} ${JSON.stringify(obj)}\n` + el.textContent;
+  } catch (e) { /* ignore */ }
+}
+
+function sendPing() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const id = ++pingSeq;
+  pendingPings.set(id, Date.now());
+  const payload = { type: 'ping', t: Date.now(), tid: id };
+  logFrame('send', payload);
+  ws.send(JSON.stringify(payload));
 }
 
 function render() {
@@ -49,9 +69,39 @@ function connect(color) {
   ws.addEventListener('open', () => {
     document.getElementById('status').textContent = '연결됨';
     ws.send(JSON.stringify({ type: 'join', color }));
+    // start periodic pings for RTT measurement
+    if (!ws._pingTimer) ws._pingTimer = setInterval(sendPing, 2000);
   });
   ws.addEventListener('message', (ev) => {
     const msg = JSON.parse(ev.data);
+    logFrame('recv', msg);
+    if (msg.type === 'pong') {
+      const id = msg.tid;
+      const sent = pendingPings.get(id);
+      if (sent) {
+        const rtt = Date.now() - sent;
+        lastRtt = rtt;
+        const el = document.getElementById('rtt'); if (el) el.textContent = `RTT: ${rtt} ms`;
+        pendingPings.delete(id);
+      }
+      return;
+    }
+    if (msg.type === 'moveAck') {
+      if (msg.x != null && msg.y != null) {
+        myPos = { x: msg.x, y: msg.y };
+        setLocalPlayerPos(myId, msg.x, msg.y);
+        render();
+      }
+      return;
+    }
+    if (msg.type === 'claimAck') {
+      const k = `${msg.x},${msg.y}`;
+      if (pendingClaims.has(k)) pendingClaims.delete(k);
+      if (!grid[msg.y]) grid[msg.y] = Array(GRID_SIZE).fill(null);
+      grid[msg.y][msg.x] = msg.color;
+      render();
+      return;
+    }
     if (msg.type === 'welcome') { myId = msg.id; }
     if (msg.type === 'state') {
       // server authoritative state
@@ -91,6 +141,12 @@ document.getElementById('join').addEventListener('click', () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) connect(color);
 });
 
+document.getElementById('report').addEventListener('click', () => {
+  const r = lastRtt == null ? -1 : lastRtt;
+  console.log('RTT report:', r);
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'rttReport', rtt: r }));
+});
+
 window.addEventListener('keydown', (e) => {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   let dir = null;
@@ -120,6 +176,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown') dir = 'down';
   if (e.key === 'ArrowLeft') dir = 'left';
   if (e.key === 'ArrowRight') dir = 'right';
+  console.log('keydown', e.key, 'dir:', dir);
   if (dir) {
     e.preventDefault();
     // predict locally

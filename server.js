@@ -25,12 +25,26 @@ function broadcastState() {
   });
 }
 
+// Throttle/batch broadcasts to reduce network overhead on deployed instances.
+let broadcastNeeded = false;
+setInterval(() => {
+  if (broadcastNeeded) {
+    broadcastNeeded = false;
+    broadcastState();
+  }
+}, 100); // broadcast at most every 100ms
+
 wss.on('connection', (ws) => {
   let playerId = null;
 
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch (e) { return; }
+    // respond to lightweight pings for RTT measurement
+    if (msg.type === 'ping') {
+      ws.send(JSON.stringify({ type: 'pong', t: msg.t }));
+      return;
+    }
     if (msg.type === 'join') {
       playerId = Math.random().toString(36).slice(2,9);
       const color = msg.color || '#ff0000';
@@ -38,7 +52,8 @@ wss.on('connection', (ws) => {
       const y = Math.floor(Math.random()*GRID_SIZE);
       players.set(playerId, { color, x, y });
       ws.send(JSON.stringify({ type: 'welcome', id: playerId }));
-      broadcastState();
+      // schedule broadcast (batched)
+      broadcastNeeded = true;
     } else if (msg.type === 'move' && playerId) {
       const p = players.get(playerId);
       if (!p) return;
@@ -51,13 +66,18 @@ wss.on('connection', (ws) => {
       if (Math.abs(nx-x) + Math.abs(ny-y) === 1) {
         p.x = nx; p.y = ny;
         players.set(playerId, p);
-        broadcastState();
+        // send quick ack to the actor so client can confirm immediately
+        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'moveAck', x: nx, y: ny }));
+        // schedule a batched broadcast for others
+        broadcastNeeded = true;
       }
     } else if (msg.type === 'claim' && playerId) {
       const p = players.get(playerId);
       if (!p) return;
       grid[p.y][p.x] = p.color;
-      broadcastState();
+      // send immediate ack for claim so client can remove optimistic pending UI
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'claimAck', x: p.x, y: p.y, color: p.color }));
+      broadcastNeeded = true;
     }
   });
 
@@ -71,7 +91,7 @@ wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'state', grid, players: Array.from(players.entries()).map(([id,p]) => ({ id, color: p.color, x: p.x, y: p.y })) }));
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 server.on('error', (err) => {
   if (err && err.code === 'EADDRINUSE') {
