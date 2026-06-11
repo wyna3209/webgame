@@ -42,7 +42,8 @@ wss.on('connection', (ws) => {
     try { msg = JSON.parse(raw); } catch (e) { return; }
     // respond to lightweight pings for RTT measurement
     if (msg.type === 'ping') {
-      ws.send(JSON.stringify({ type: 'pong', t: msg.t }));
+      // echo back the ping time and id so client can compute RTT
+      ws.send(JSON.stringify({ type: 'pong', t: msg.t, tid: msg.tid }));
       return;
     }
     if (msg.type === 'join') {
